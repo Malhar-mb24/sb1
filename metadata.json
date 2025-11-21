@@ -1,0 +1,8 @@
+{
+  "name": "SwasthyaBhandhu",
+  "description": "A comprehensive, multi-tenant healthcare platform bridging the gap between patients, field workers, and doctors with AI-assisted diagnostics.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
