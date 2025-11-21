@@ -17,6 +17,15 @@ export enum ConsultationStatus {
   COMPLETED = 'COMPLETED',
 }
 
+export enum Department {
+    GENERAL = 'General Practice',
+    CARDIOLOGY = 'Cardiology',
+    DERMATOLOGY = 'Dermatology',
+    NEUROLOGY = 'Neurology',
+    ORTHOPEDICS = 'Orthopedics',
+    GYNECOLOGY = 'Gynecology'
+}
+
 export interface User {
   id: string;
   name: string;
