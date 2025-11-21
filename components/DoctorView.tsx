@@ -1,19 +1,64 @@
-import React, { useState, useEffect } from 'react';
-import { User, Consultation, ConsultationStatus, PrescriptionItem, Department } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { User, Consultation, ConsultationStatus, PrescriptionItem, Department, TriageLevel } from '../types';
 import { api } from '../services/api';
 import { formatClinicalNotes } from '../services/geminiService';
 import { 
   Mic, Video, FileText, CheckCircle, Pill, Clock, 
   Paperclip, Play, X, Box, Share2, ClipboardCheck, 
   Search, ChevronRight, Lock, Unlock, AlertTriangle,
-  Users, Calendar, Activity, LayoutGrid
+  Users, Calendar, Activity, LayoutGrid, Brain, Droplets,
+  Heart, PersonStanding, Plus, Trash2, Zap, Calculator,
+  TrendingUp, LogOut, Bell, Stethoscope, Scan, Layers,
+  SplitSquareHorizontal, Eye, Bone, Sun, Languages,
+  Settings, RefreshCw, Thermometer, MessageSquare
 } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 
 interface Props {
   user: User;
 }
 
-// --- 1. QUEUE MANAGEMENT ---
+// --- MOCK DATA & CONSTANTS ---
+const VITALS_HISTORY = [
+    { date: '10 Jan', bpSys: 130, sugar: 180 },
+    { date: '15 Feb', bpSys: 140, sugar: 200 },
+    { date: '20 Mar', bpSys: 135, sugar: 190 },
+    { date: 'Today', bpSys: 160, sugar: 240 },
+];
+
+const DRUG_INTERACTIONS: Record<string, string[]> = {
+    'Aspirin': ['Warfarin', 'Ibuprofen', 'Heparin'],
+    'Warfarin': ['Aspirin', 'Acetaminophen', 'Ciprofloxacin'],
+    'Metformin': ['Furosemide', 'Nifedipine'],
+    'Ibuprofen': ['Aspirin', 'Lisinopril']
+};
+
+type SpecialtyType = 'GENERAL' | 'ORTHO' | 'DERMA' | 'OPHTHAL';
+
+// --- HELPER COMPONENTS ---
+
+const BodyMap = ({ onZoneClick, markedZones }: { onZoneClick: (zone: string) => void, markedZones: string[] }) => {
+    const getFill = (zone: string) => markedZones.includes(zone) ? "#fca5a5" : "#e5e7eb"; 
+    const getStroke = (zone: string) => markedZones.includes(zone) ? "#ef4444" : "#9ca3af";
+    
+    return (
+        <svg viewBox="0 0 200 420" className="h-full w-auto mx-auto cursor-pointer select-none drop-shadow-sm">
+            <g transform="translate(0, 10)">
+                <ellipse cx="100" cy="25" rx="20" ry="25" fill={getFill('Head')} stroke={getStroke('Head')} strokeWidth="2" onClick={() => onZoneClick('Head')} className="hover:opacity-80 transition-all" />
+                <rect x="92" y="50" width="16" height="10" fill={getFill('Neck')} stroke={getStroke('Neck')} strokeWidth="2" onClick={() => onZoneClick('Neck')} className="hover:opacity-80 transition-all" />
+                <path d="M70,60 L130,60 L125,130 L75,130 Z" fill={getFill('Chest')} stroke={getStroke('Chest')} strokeWidth="2" onClick={() => onZoneClick('Chest')} className="hover:opacity-80 transition-all" />
+                <path d="M75,130 L125,130 L120,190 L80,190 Z" fill={getFill('Abdomen')} stroke={getStroke('Abdomen')} strokeWidth="2" onClick={() => onZoneClick('Abdomen')} className="hover:opacity-80 transition-all" />
+                <path d="M70,60 L40,70 L35,150 L55,150 L65,80 Z" fill={getFill('Left Arm')} stroke={getStroke('Left Arm')} strokeWidth="2" onClick={() => onZoneClick('Left Arm')} className="hover:opacity-80 transition-all" />
+                <path d="M130,60 L160,70 L165,150 L145,150 L135,80 Z" fill={getFill('Right Arm')} stroke={getStroke('Right Arm')} strokeWidth="2" onClick={() => onZoneClick('Right Arm')} className="hover:opacity-80 transition-all" />
+                <path d="M80,190 L75,340 L100,340 L100,190 Z" fill={getFill('Left Leg')} stroke={getStroke('Left Leg')} strokeWidth="2" onClick={() => onZoneClick('Left Leg')} className="hover:opacity-80 transition-all" />
+                <path d="M120,190 L125,340 L100,340 L100,190 Z" fill={getFill('Right Leg')} stroke={getStroke('Right Leg')} strokeWidth="2" onClick={() => onZoneClick('Right Leg')} className="hover:opacity-80 transition-all" />
+            </g>
+        </svg>
+    );
+};
+
+// --- MODULES ---
+
 const QueueList = ({ queue, onAttend }: { queue: Consultation[], onAttend: (c: Consultation) => void }) => (
     <div className="bg-white rounded-2xl shadow border border-slate-200 overflow-hidden h-full flex flex-col animate-in fade-in">
         <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
@@ -63,74 +108,207 @@ const QueueList = ({ queue, onAttend }: { queue: Consultation[], onAttend: (c: C
     </div>
 );
 
-// --- 2. PATIENT REPORTS & TIMELINE ---
 const PatientTimeline = () => (
     <div className="h-full flex flex-col gap-6 animate-in slide-in-from-right-4 duration-300">
         <div className="bg-white p-4 rounded-xl border border-slate-200 flex gap-4 shadow-sm">
             <div className="relative flex-1">
                 <Search className="absolute left-3 top-3 text-slate-400" size={20} />
-                <input type="text" placeholder="Search Patient by Name or ABHA ID..." className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-500" />
+                <input type="text" placeholder="Search Patient..." className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-500" />
             </div>
             <button className="bg-slate-800 text-white px-6 py-2 rounded-lg font-bold hover:bg-slate-900 transition-colors">Search</button>
         </div>
-
-        <div className="flex-1 bg-white rounded-xl border border-slate-200 p-6 overflow-y-auto">
-            <h3 className="font-bold text-lg text-slate-800 mb-6 flex items-center gap-2">
-                <Calendar className="text-teal-600" size={20}/> Medical History: Ramesh Gupta (54M)
-            </h3>
-            <div className="space-y-8 relative pl-4 border-l-2 border-slate-200 ml-4">
-                {[
-                    { date: 'Oct 24, 2024', type: 'Lab Report', title: 'HbA1c Analysis', doctor: 'Dr. Sarah Khan', status: 'Abnormal' },
-                    { date: 'Sep 10, 2024', type: 'Consultation', title: 'General Checkup - Fever', doctor: 'Dr. Amit Verma', status: 'Resolved' },
-                    { date: 'Aug 01, 2024', type: 'Imaging', title: 'Chest X-Ray PA View', doctor: 'Radiology Dept', status: 'Normal' },
-                ].map((item, i) => (
-                    <div key={i} className="relative group">
-                        <div className="absolute -left-[25px] top-0 w-4 h-4 bg-teal-500 rounded-full border-4 border-white shadow-sm group-hover:scale-125 transition-transform"></div>
-                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 hover:shadow-md transition cursor-pointer hover:bg-teal-50/30">
-                            <div className="flex justify-between items-start mb-2">
-                                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{item.date}</span>
-                                <span className={`text-xs font-bold px-2 py-0.5 rounded ${item.status === 'Abnormal' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>{item.status}</span>
-                            </div>
-                            <h4 className="font-bold text-slate-800 text-lg">{item.title}</h4>
-                            <p className="text-sm text-slate-500 mb-4">{item.type} • Author: {item.doctor}</p>
-                            <button className="text-teal-600 font-bold text-sm flex items-center gap-1 hover:underline">View Details <ChevronRight size={16}/></button>
-                        </div>
-                    </div>
-                ))}
-            </div>
+        <div className="flex-1 bg-white rounded-xl border border-slate-200 p-6 overflow-y-auto flex items-center justify-center text-slate-400">
+            <p>Select a patient to view history</p>
         </div>
     </div>
 );
 
-// --- 3. CLINICAL NOTES & DIAGNOSTICS ---
-const DiagnosticManager = () => (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full animate-in slide-in-from-right-4 duration-300">
-        <div className="bg-white rounded-xl border border-slate-200 p-6 flex flex-col shadow-sm">
-            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><ClipboardCheck className="text-teal-600"/> Pending Lab Approvals</h3>
-            <div className="space-y-3 overflow-y-auto flex-1">
-                {[1, 2, 3].map(i => (
-                    <div key={i} className="p-4 border border-slate-100 rounded-xl hover:bg-slate-50 cursor-pointer transition flex justify-between items-center group">
-                        <div>
-                            <div className="flex items-center gap-2 mb-1">
-                                <span className="font-bold text-sm text-slate-700">Sample #LAB-{200+i}</span>
-                                <span className="text-xs text-orange-600 bg-orange-50 px-2 py-0.5 rounded font-bold border border-orange-100">Review</span>
+// --- RICH CLINICAL WORKSPACE (Reused for Active Call & Diagnostics Tab) ---
+const ClinicalWorkspace = ({ activeCase, readOnly = false }: { activeCase: Consultation, readOnly?: boolean }) => {
+    const [specialty, setSpecialty] = useState<SpecialtyType>('GENERAL');
+    const [activeTab, setActiveTab] = useState<string>('VITALS');
+    const [markedBodyZones, setMarkedBodyZones] = useState<string[]>([]);
+    const [aiScanOverlay, setAiScanOverlay] = useState(false);
+    
+    // Mock prescription state
+    const [prescription, setPrescription] = useState<PrescriptionItem[]>([]);
+    const [newMed, setNewMed] = useState({ medicine: '', dosage: '', duration: '' });
+    const [drugWarning, setDrugWarning] = useState<string | null>(null);
+
+    useEffect(() => setActiveTab('VITALS'), [specialty]);
+
+    const handleMedInputChange = (val: string) => {
+        setNewMed({...newMed, medicine: val});
+        // Mock interaction check
+        const conflict = DRUG_INTERACTIONS[val] ? DRUG_INTERACTIONS[val][0] : null; 
+        setDrugWarning(conflict ? `Interacts with ${conflict}` : null);
+    };
+
+    const getTabs = () => {
+        const common = [
+            { id: 'VITALS', label: 'VITALS', icon: Activity },
+            { id: 'TRENDS', label: 'TRENDS', icon: TrendingUp },
+            { id: 'AI', label: 'AI INSIGHTS', icon: Brain },
+        ];
+        switch (specialty) {
+            case 'ORTHO': return [...common, { id: 'ORTHO_EXAM', label: 'MOBILITY', icon: Bone }, { id: 'RADIOLOGY', label: 'X-RAY', icon: Scan }];
+            case 'DERMA': return [...common, { id: 'DERMA_EXAM', label: 'SKIN', icon: Sun }, { id: 'RADIOLOGY', label: 'DERMOSCOPY', icon: Layers }];
+            case 'OPHTHAL': return [...common, { id: 'VISION_EXAM', label: 'VISION', icon: Eye }, { id: 'RADIOLOGY', label: 'FUNDUS', icon: Scan }];
+            default: return [...common, { id: 'EXAM', label: 'PHYSICAL', icon: PersonStanding }, { id: 'RADIOLOGY', label: 'RADIOLOGY', icon: Scan }];
+        }
+    };
+
+    return (
+        <div className="h-full flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+            {/* Header / Specialty Switcher */}
+            <div className="p-3 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+                <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar">
+                    {getTabs().map(tab => (
+                        <button 
+                            key={tab.id} 
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors ${activeTab === tab.id ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'}`}
+                        >
+                            <tab.icon size={14} /> {tab.label}
+                        </button>
+                    ))}
+                </div>
+                <select 
+                    value={specialty} 
+                    onChange={(e) => setSpecialty(e.target.value as SpecialtyType)}
+                    className="text-xs font-bold bg-white border border-slate-300 rounded px-2 py-1 outline-none text-slate-700"
+                >
+                    <option value="GENERAL">General</option>
+                    <option value="ORTHO">Ortho</option>
+                    <option value="DERMA">Derma</option>
+                    <option value="OPHTHAL">Eye</option>
+                </select>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+                {/* VITALS */}
+                {activeTab === 'VITALS' && (
+                    <div className="space-y-5 animate-in fade-in">
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <Activity className="w-4 h-4 text-gray-400" />
+                                    <span className="text-xs font-bold text-slate-500">BP</span>
+                                </div>
+                                <p className="text-2xl font-bold text-slate-800">{activeCase.vitals.bp}</p>
                             </div>
-                            <p className="text-xs text-slate-500">Lipid Profile • Patient: Sunita Devi</p>
+                            <div className="p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <Droplets className="w-4 h-4 text-gray-400" />
+                                    <span className="text-xs font-bold text-slate-500">Glucose</span>
+                                </div>
+                                <p className="text-2xl font-bold text-slate-800">{activeCase.vitals.glucose}</p>
+                            </div>
                         </div>
-                        <ChevronRight className="text-slate-300 group-hover:text-teal-600" size={20} />
+                        
+                        {!readOnly && (
+                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <h4 className="text-xs font-bold text-slate-600 uppercase mb-3">Quick Rx</h4>
+                                <div className="flex gap-2 mb-2">
+                                    <input type="text" placeholder="Med Name" value={newMed.medicine} onChange={e => handleMedInputChange(e.target.value)} className="flex-1 p-2 text-xs border rounded" />
+                                    <input type="text" placeholder="Dose" value={newMed.dosage} onChange={e => setNewMed({...newMed, dosage: e.target.value})} className="w-20 p-2 text-xs border rounded" />
+                                    <button onClick={() => { if(newMed.medicine) setPrescription([...prescription, newMed]); setNewMed({medicine:'', dosage:'', duration:''}); setDrugWarning(null); }} className="bg-teal-600 text-white p-2 rounded"><Plus size={14}/></button>
+                                </div>
+                                {drugWarning && <p className="text-[10px] text-red-600 font-bold flex items-center gap-1"><AlertTriangle size={10}/> {drugWarning}</p>}
+                                <div className="space-y-1 mt-2">
+                                    {prescription.map((p, i) => (
+                                        <div key={i} className="flex justify-between text-xs bg-white p-2 rounded border">
+                                            <span>{p.medicine} {p.dosage}</span>
+                                            <Trash2 size={12} className="cursor-pointer text-red-500" onClick={() => setPrescription(prescription.filter((_, idx) => idx !== i))}/>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
-                ))}
+                )}
+
+                {/* BODY EXAM */}
+                {(activeTab === 'EXAM' || activeTab === 'DERMA_EXAM') && (
+                    <div className="h-full flex flex-col animate-in fade-in">
+                        <div className="bg-blue-50 p-3 rounded-lg mb-4 flex gap-2 items-start border border-blue-100">
+                            <PersonStanding className="w-5 h-5 text-blue-600 mt-0.5" />
+                            <div>
+                                <p className="text-xs font-bold text-blue-800">Interactive Body Map</p>
+                                <p className="text-[10px] text-blue-600 leading-tight">Click zones to log findings.</p>
+                            </div>
+                        </div>
+                        <div className="flex-1 relative flex justify-center">
+                            <BodyMap onZoneClick={(z) => setMarkedBodyZones(prev => prev.includes(z) ? prev.filter(i => i !== z) : [...prev, z])} markedZones={markedBodyZones} />
+                        </div>
+                    </div>
+                )}
+
+                {/* RADIOLOGY */}
+                {activeTab === 'RADIOLOGY' && (
+                    <div className="h-full flex flex-col animate-in fade-in space-y-4">
+                        <div className="bg-slate-900 rounded-xl overflow-hidden relative group min-h-[250px] flex items-center justify-center">
+                            <img src="https://prod-images-static.radiopaedia.org/images/1363557/04482626e47b8434f7bd992e02f065_jumbo.jpeg" className="max-w-full max-h-[250px] opacity-90" alt="X-Ray"/>
+                            {aiScanOverlay && <div className="absolute inset-0 bg-gradient-radial from-red-500/30 to-transparent animate-pulse pointer-events-none"></div>}
+                            {aiScanOverlay && (
+                                <div className="absolute bottom-2 left-2 right-2 bg-slate-800/90 text-white p-3 rounded-lg backdrop-blur text-xs">
+                                    <p className="font-bold text-red-400 flex items-center gap-1"><AlertTriangle size={12}/> Anomaly Detected</p>
+                                    <p className="text-slate-300">Lower Lobe Opacity (92% Conf.)</p>
+                                </div>
+                            )}
+                        </div>
+                        <button onClick={() => setAiScanOverlay(!aiScanOverlay)} className={`w-full py-2 rounded-lg text-xs font-bold border flex items-center justify-center gap-2 ${aiScanOverlay ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-200'}`}>
+                            <Scan size={14}/> {aiScanOverlay ? 'Hide AI Analysis' : 'Run AI Scan'}
+                        </button>
+                    </div>
+                )}
+
+                {/* TRENDS */}
+                {activeTab === 'TRENDS' && (
+                    <div className="h-64 w-full animate-in fade-in">
+                        <h4 className="text-xs font-bold text-slate-500 mb-4">BP Trend (Last 3 Months)</h4>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={VITALS_HISTORY}>
+                                <XAxis dataKey="date" fontSize={10} />
+                                <YAxis domain={[100, 180]} fontSize={10} />
+                                <RechartsTooltip />
+                                <Line type="monotone" dataKey="bpSys" stroke="#0d9488" strokeWidth={2} />
+                            </LineChart>
+                        </ResponsiveContainer>
+                    </div>
+                )}
+
+                {/* AI INSIGHTS */}
+                {activeTab === 'AI' && (
+                    <div className="space-y-4 animate-in fade-in">
+                        <div className="bg-purple-50 p-4 rounded-xl border border-purple-100">
+                            <div className="flex items-center gap-2 mb-2 text-purple-800">
+                                <Brain className="w-4 h-4" />
+                                <h4 className="font-bold text-xs">Clinical Analysis</h4>
+                            </div>
+                            <p className="text-xs text-purple-900 leading-relaxed">
+                                Based on vitals (BP 160/95) and history, patient shows signs of <strong>Uncontrolled Hypertension</strong>. 
+                            </p>
+                        </div>
+                        <div className="bg-white p-4 rounded-xl border border-slate-200">
+                            <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">Differential Diagnosis</h4>
+                            <ul className="space-y-2">
+                                <li className="flex justify-between items-center text-xs p-2 bg-slate-50 rounded border border-slate-100">
+                                    <span>Hypertensive Crisis</span>
+                                    <span className="font-bold text-red-500">High Prob</span>
+                                </li>
+                                <li className="flex justify-between items-center text-xs p-2 bg-slate-50 rounded border border-slate-100">
+                                    <span>Vertigo</span>
+                                    <span className="font-bold text-orange-500">Med Prob</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-6 flex flex-col shadow-sm">
-            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Activity className="text-blue-600"/> Diagnostic Timeline</h3>
-             <div className="bg-slate-50 p-4 rounded-xl text-center border-2 border-dashed border-slate-200 flex-1 flex flex-col items-center justify-center">
-                 <Activity className="text-slate-300 mb-2" size={48} />
-                 <p className="text-slate-500 font-medium">Select a lab request to view tracking timeline</p>
-             </div>
-        </div>
-    </div>
-);
+    );
+};
 
 // --- 4. KIOSK & VENDING CONTROL ---
 const KioskController = () => {
@@ -205,7 +383,110 @@ const KioskController = () => {
     );
 }
 
-// --- 5. POST TREATMENT PLANNING ---
+// --- 5. SWASTHYA KIT CONTROL (NEW) ---
+const SwasthyaKitControl = () => {
+  const [kits] = useState(['Kit-Alpha-01', 'Kit-Beta-04', 'Kit-Gamma-09']);
+  const [logs, setLogs] = useState([
+      { time: '10:42 AM', event: 'Door unlocked manually', type: 'warn' },
+      { time: '10:30 AM', event: 'Dispensed Paracetamol (2)', type: 'info' },
+      { time: '09:15 AM', event: 'System Boot', type: 'success' }
+  ]);
+
+  return (
+      <div className="h-full flex flex-col gap-6 animate-in fade-in">
+          {/* Header */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 flex justify-between items-center shadow-sm">
+              <div className="flex items-center gap-4">
+                  <div className="p-4 bg-teal-50 rounded-xl text-teal-600"><Box size={32}/></div>
+                  <div>
+                      <h2 className="font-bold text-xl text-slate-800">Swasthya Kit Command Center</h2>
+                      <select className="text-sm font-medium text-slate-500 bg-transparent border-none outline-none cursor-pointer mt-1">
+                          {kits.map(k => <option key={k}>{k}</option>)}
+                      </select>
+                  </div>
+              </div>
+              <div className="flex gap-6 text-sm bg-slate-50 px-6 py-3 rounded-xl border border-slate-100">
+                  <div className="flex items-center gap-2 text-slate-600 font-bold"><div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse"></div> Online</div>
+                  <div className="w-px h-full bg-slate-300"></div>
+                  <div className="flex items-center gap-2 text-slate-600 font-medium"><Zap size={16} className="text-yellow-500"/> 84% Battery</div>
+                  <div className="w-px h-full bg-slate-300"></div>
+                  <div className="flex items-center gap-2 text-slate-600 font-medium"><Thermometer size={16} className="text-red-500"/> 24°C</div>
+              </div>
+          </div>
+
+          <div className="flex-1 flex gap-6">
+              {/* Left: Hardware Controls */}
+              <div className="w-2/3 flex flex-col gap-6">
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                      <h3 className="font-bold text-slate-700 mb-6 flex items-center gap-2"><Settings size={20}/> Hardware Operations</h3>
+                      <div className="grid grid-cols-3 gap-4">
+                          <button className="p-6 border border-slate-200 rounded-2xl hover:bg-slate-50 flex flex-col items-center gap-3 text-slate-600 hover:text-teal-600 transition-all shadow-sm hover:shadow-md">
+                              <Lock size={28}/> <span className="text-sm font-bold">Lock Door</span>
+                          </button>
+                          <button className="p-6 border border-slate-200 rounded-2xl hover:bg-slate-50 flex flex-col items-center gap-3 text-slate-600 hover:text-teal-600 transition-all shadow-sm hover:shadow-md">
+                              <Unlock size={28}/> <span className="text-sm font-bold">Unlock</span>
+                          </button>
+                          <button className="p-6 border border-slate-200 rounded-2xl hover:bg-red-50 flex flex-col items-center gap-3 text-slate-600 hover:text-red-600 transition-all shadow-sm hover:shadow-md group border-b-4 border-b-slate-200 active:border-b-0 active:translate-y-1">
+                              <Bell size={28} className="group-hover:animate-bounce"/> <span className="text-sm font-bold">Trigger Alarm</span>
+                          </button>
+                          <button className="p-6 border border-slate-200 rounded-2xl hover:bg-slate-50 flex flex-col items-center gap-3 text-slate-600 hover:text-teal-600 transition-all shadow-sm hover:shadow-md">
+                              <RefreshCw size={28}/> <span className="text-sm font-bold">Reboot</span>
+                          </button>
+                          <button className="p-6 border border-slate-200 rounded-2xl hover:bg-slate-50 flex flex-col items-center gap-3 text-slate-600 hover:text-teal-600 transition-all shadow-sm hover:shadow-md">
+                              <Video size={28}/> <span className="text-sm font-bold">Test Cam</span>
+                          </button>
+                          <button className="p-6 border border-slate-200 rounded-2xl hover:bg-slate-50 flex flex-col items-center gap-3 text-slate-600 hover:text-teal-600 transition-all shadow-sm hover:shadow-md">
+                              <Mic size={28}/> <span className="text-sm font-bold">Test Audio</span>
+                          </button>
+                      </div>
+                  </div>
+
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex-1">
+                      <h3 className="font-bold text-slate-700 mb-6 flex items-center gap-2"><Box size={20}/> Dispense Override</h3>
+                      <div className="grid grid-cols-2 gap-4">
+                          {['Paracetamol 500mg', 'Ibuprofen 400mg', 'ORS Sachets', 'Bandages (Large)', 'Antiseptic Cream', 'Digital Thermometer'].map(item => (
+                              <div key={item} className="flex justify-between items-center p-4 border border-slate-100 rounded-xl hover:border-teal-200 transition-colors">
+                                  <span className="text-sm font-bold text-slate-700">{item}</span>
+                                  <button className="px-4 py-2 bg-slate-800 text-white text-xs font-bold rounded-lg hover:bg-slate-900 shadow-sm transition-transform active:scale-95">Dispense</button>
+                              </div>
+                          ))}
+                      </div>
+                  </div>
+              </div>
+
+              {/* Right: Response Log */}
+              <div className="w-1/3 bg-slate-900 text-white p-6 rounded-2xl shadow-xl flex flex-col border border-slate-800">
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="font-bold text-slate-100 flex items-center gap-2"><Activity size={20} className="text-teal-400"/> Live Event Log</h3>
+                    <span className="w-2 h-2 bg-red-500 rounded-full animate-ping"></span>
+                  </div>
+                  <div className="flex-1 overflow-y-auto space-y-6 pr-2">
+                      {logs.map((log, i) => (
+                          <div key={i} className="flex gap-4 text-sm relative group">
+                              <div className="flex flex-col items-center">
+                                <div className="w-2 h-2 bg-slate-600 rounded-full group-hover:bg-teal-400 transition-colors"></div>
+                                <div className="w-px h-full bg-slate-800 my-1"></div>
+                              </div>
+                              <div>
+                                  <span className="text-slate-500 text-xs font-mono block mb-1">{log.time}</span>
+                                  <p className="text-slate-200 font-medium">{log.event}</p>
+                              </div>
+                          </div>
+                      ))}
+                  </div>
+                  <div className="mt-6 pt-4 border-t border-slate-800">
+                      <div className="relative">
+                        <input type="text" placeholder="Send Command..." className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 pl-4 pr-10 text-sm text-white outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all" />
+                        <button className="absolute right-2 top-2 text-slate-400 hover:text-white p-1"><MessageSquare size={16}/></button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      </div>
+  )
+}
+
+// --- 6. POST TREATMENT PLANNING ---
 const CarePlanner = () => (
     <div className="h-full flex gap-6 animate-in slide-in-from-right-4 duration-300">
         <div className="w-1/3 bg-white p-6 rounded-xl border border-slate-200 h-full flex flex-col shadow-sm">
@@ -262,7 +543,7 @@ const CarePlanner = () => (
     </div>
 );
 
-// --- 6. INTER-DEPARTMENT ESCALATION ---
+// --- 7. INTER-DEPARTMENT ESCALATION ---
 const EscalationManager = () => (
     <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in slide-in-from-bottom-8 duration-500">
         <div className="p-6 border-b border-slate-100 bg-red-50">
@@ -309,10 +590,48 @@ const EscalationManager = () => (
     </div>
 );
 
+// --- 8. DIAGNOSTICS TAB (Reusing ClinicalWorkspace) ---
+const DiagnosticWorkstation = () => {
+    // Mock active case for demo purposes in the Diagnostic Tab
+    const demoCase: Consultation = {
+        id: 'demo-1',
+        patientId: 'p1',
+        patientName: 'Ramesh Gupta',
+        vitals: { bp: '160/95', spo2: 92, pulse: 105, glucose: 140, temp: 99 },
+        chiefComplaint: '', symptoms: '', attachments: [], triage: TriageLevel.RED, status: ConsultationStatus.IN_PROGRESS, createdAt: new Date()
+    };
+
+    return (
+        <div className="h-full flex flex-col gap-6 animate-in slide-in-from-right-4 duration-300">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 flex justify-between items-center shadow-sm">
+                <div className="flex items-center gap-3">
+                     <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center text-teal-700 font-bold">RG</div>
+                     <div>
+                         <h3 className="font-bold text-slate-800">Ramesh Gupta</h3>
+                         <p className="text-xs text-slate-500">54 Male • ID: pat-101</p>
+                     </div>
+                </div>
+                <div className="flex gap-2">
+                    <button className="text-slate-500 hover:bg-slate-50 p-2 rounded-lg"><ChevronRight className="rotate-90"/></button>
+                </div>
+            </div>
+            <div className="flex-1 flex gap-6 overflow-hidden">
+                <div className="w-1/2 bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                    <h3 className="font-bold text-slate-700 mb-2 flex items-center gap-2"><FileText size={16}/> Clinical Notes</h3>
+                    <textarea className="w-full h-full border border-slate-200 rounded-lg p-3 text-sm resize-none focus:ring-2 focus:ring-teal-500 outline-none" placeholder="Review or edit notes..." defaultValue="Patient presented with severe hypertension..."></textarea>
+                </div>
+                <div className="w-1/2">
+                    <ClinicalWorkspace activeCase={demoCase} readOnly={true} />
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // --- MAIN DOCTOR VIEW ---
 
 const DoctorView: React.FC<Props> = ({ user }) => {
-  const [activeSection, setActiveSection] = useState<'QUEUE' | 'REPORTS' | 'CLINICAL' | 'KIOSK' | 'PLAN' | 'ESCALATION'>('QUEUE');
+  const [activeSection, setActiveSection] = useState<'QUEUE' | 'REPORTS' | 'CLINICAL' | 'KIOSK' | 'KIT_CONTROL' | 'PLAN' | 'ESCALATION'>('QUEUE');
   const [queue, setQueue] = useState<Consultation[]>([]);
   const [activeCase, setActiveCase] = useState<Consultation | null>(null);
   
@@ -392,7 +711,8 @@ const DoctorView: React.FC<Props> = ({ user }) => {
       { id: 'QUEUE', label: 'Patient Queue', icon: Users },
       { id: 'REPORTS', label: 'Patient Reports', icon: Calendar },
       { id: 'CLINICAL', label: 'Clinical/Diagnostics', icon: ClipboardCheck },
-      { id: 'KIOSK', label: 'Kiosk Control', icon: LayoutGrid },
+      { id: 'KIOSK', label: 'Vending Control', icon: LayoutGrid },
+      { id: 'KIT_CONTROL', label: 'Kit Control & Response', icon: Settings },
       { id: 'PLAN', label: 'Care Planning', icon: FileText },
       { id: 'ESCALATION', label: 'Escalation', icon: Share2 },
   ];
@@ -565,8 +885,9 @@ const DoctorView: React.FC<Props> = ({ user }) => {
             <div className="flex-1 p-6 overflow-hidden bg-slate-50/50">
                 {activeSection === 'QUEUE' && <QueueList queue={queue} onAttend={startConsultation} />}
                 {activeSection === 'REPORTS' && <PatientTimeline />}
-                {activeSection === 'CLINICAL' && <DiagnosticManager />}
+                {activeSection === 'CLINICAL' && <DiagnosticWorkstation />}
                 {activeSection === 'KIOSK' && <KioskController />}
+                {activeSection === 'KIT_CONTROL' && <SwasthyaKitControl />}
                 {activeSection === 'PLAN' && <CarePlanner />}
                 {activeSection === 'ESCALATION' && <EscalationManager />}
             </div>
