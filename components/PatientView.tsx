@@ -7,7 +7,8 @@ import SwasthyaScore from './SwasthyaScore';
 import { 
   AlertCircle, Video, Send, Activity, Phone, History, 
   Calendar, Shield, CheckSquare, MapPin, Menu, X, 
-  PlayCircle, FileText, Pill, ChevronRight, Users, HeartPulse
+  PlayCircle, FileText, Pill, ChevronRight, Users, HeartPulse,
+  Mic
 } from 'lucide-react';
 
 interface Props {
@@ -18,6 +19,7 @@ const PatientView: React.FC<Props> = ({ user }) => {
   const [activeSection, setActiveSection] = useState<'dashboard' | 'history' | 'treatment' | 'education' | 'insurance' | 'services' | 'family' | 'score'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [history, setHistory] = useState<Consultation[]>([]);
+  const [isCallActive, setIsCallActive] = useState(false); // Video Call State
   
   // Chat State
   const [chatInput, setChatInput] = useState('');
@@ -56,6 +58,63 @@ const PatientView: React.FC<Props> = ({ user }) => {
     setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
   };
 
+  // --- ZEGO VIDEO CALL LOGIC ---
+  const loadZegoScript = () => {
+    return new Promise((resolve) => {
+        if ((window as any).ZegoUIKitPrebuilt) {
+            resolve((window as any).ZegoUIKitPrebuilt);
+            return;
+        }
+        const script = document.createElement("script");
+        script.src = "https://unpkg.com/@zegocloud/zego-uikit-prebuilt/zego-uikit-prebuilt.js";
+        script.onload = () => {
+            resolve((window as any).ZegoUIKitPrebuilt);
+        };
+        document.body.appendChild(script);
+    });
+  };
+
+  const myMeeting = async (element: HTMLDivElement) => {
+    if (!element) return;
+    
+    const ZegoUIKitPrebuilt = await loadZegoScript() as any;
+    
+    // Generate Kit Token
+    const roomID = (Math.floor(Math.random() * 10000) + "");
+    const userID = Math.floor(Math.random() * 10000) + "";
+    const userName = user.name;
+    const appID = 782258083;
+    const serverSecret = "271e638a9ca347c0ebd6ee691c1728a0";
+    const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(appID, serverSecret, roomID, userID, userName);
+
+    // Create instance object from Kit Token.
+    const zp = ZegoUIKitPrebuilt.create(kitToken);
+    
+    // Start the call
+    zp.joinRoom({
+        container: element,
+        sharedLinks: [{
+            name: 'Personal link',
+            url: window.location.protocol + '//' + window.location.host  + window.location.pathname + '?roomID=' + roomID,
+        }],
+        scenario: {
+            mode: ZegoUIKitPrebuilt.VideoConference,
+        },
+        turnOnMicrophoneWhenJoining: true,
+        turnOnCameraWhenJoining: true,
+        showMyCameraToggleButton: true,
+        showMyMicrophoneToggleButton: true,
+        showAudioVideoSettingsButton: true,
+        showScreenSharingButton: true,
+        showTextChat: true,
+        showUserList: true,
+        maxUsers: 2,
+        layout: "Auto",
+        showLayoutButton: false,
+        onLeaveRoom: () => setIsCallActive(false), // Close overlay when leaving
+    });
+  };
+
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Activity },
     { id: 'score', label: 'Swasthya Score', icon: HeartPulse },
@@ -70,6 +129,13 @@ const PatientView: React.FC<Props> = ({ user }) => {
   return (
     <div className="flex h-[calc(100vh-64px)] bg-slate-50 overflow-hidden">
       
+      {/* ZEGO VIDEO CALL OVERLAY */}
+      {isCallActive && (
+        <div className="fixed inset-0 z-[100] bg-white animate-in fade-in duration-300">
+             <div ref={myMeeting} style={{ width: '100vw', height: '100vh' }}></div>
+        </div>
+      )}
+
       {/* Mobile Sidebar Overlay */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-20 lg:hidden" onClick={() => setIsMobileMenuOpen(false)}></div>
@@ -160,8 +226,11 @@ const PatientView: React.FC<Props> = ({ user }) => {
                                     <p className="font-medium flex items-center gap-2"><Video size={16}/> Video Consultation</p>
                                     <p className="text-xs opacity-75 mt-1">Token #42 • Estimated Wait: 10 mins</p>
                                 </div>
-                                <button className="bg-white text-teal-800 px-4 py-2 rounded-lg font-bold text-sm hover:bg-teal-50 transition shadow-sm">
-                                    Join Call
+                                <button 
+                                    onClick={() => setIsCallActive(true)}
+                                    className="bg-white text-teal-800 px-6 py-2 rounded-lg font-bold text-sm hover:bg-teal-50 transition shadow-sm flex items-center gap-2"
+                                >
+                                    <Video size={16} /> Join Call
                                 </button>
                             </div>
                          </div>
