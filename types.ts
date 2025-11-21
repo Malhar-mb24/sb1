@@ -90,3 +90,23 @@ export interface InventoryItem {
   threshold: number; // Low stock warning level
   location: string;
 }
+
+export interface FamilyMember {
+    id: string;
+    name: string;
+    relation: string;
+    age: number;
+    bloodGroup: string;
+    avatarUrl: string;
+}
+
+export const LANGUAGES = [
+  { code: 'en', name: 'English' },
+  { code: 'hi', name: 'Hindi' },
+  { code: 'bn', name: 'Bengali' },
+  { code: 'te', name: 'Telugu' },
+  { code: 'ta', name: 'Tamil' },
+  { code: 'kn', name: 'Kannada' },
+  { code: 'mr', name: 'Marathi' },
+  { code: 'gu', name: 'Gujarati' }
+];

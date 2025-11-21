@@ -2,10 +2,12 @@ import React, { useState, useRef, useEffect } from 'react';
 import { User, TriageLevel, Consultation } from '../types';
 import { api } from '../services/api';
 import { analyzeSymptoms } from '../services/geminiService';
+import FamilyManager from './FamilyManager';
+import SwasthyaScore from './SwasthyaScore';
 import { 
   AlertCircle, Video, Send, Activity, Phone, History, 
   Calendar, Shield, CheckSquare, MapPin, Menu, X, 
-  PlayCircle, FileText, Pill, ChevronRight
+  PlayCircle, FileText, Pill, ChevronRight, Users, HeartPulse
 } from 'lucide-react';
 
 interface Props {
@@ -13,7 +15,7 @@ interface Props {
 }
 
 const PatientView: React.FC<Props> = ({ user }) => {
-  const [activeSection, setActiveSection] = useState<'dashboard' | 'history' | 'treatment' | 'education' | 'insurance' | 'services'>('dashboard');
+  const [activeSection, setActiveSection] = useState<'dashboard' | 'history' | 'treatment' | 'education' | 'insurance' | 'services' | 'family' | 'score'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [history, setHistory] = useState<Consultation[]>([]);
   
@@ -56,8 +58,10 @@ const PatientView: React.FC<Props> = ({ user }) => {
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Activity },
+    { id: 'score', label: 'Swasthya Score', icon: HeartPulse },
     { id: 'history', label: 'Consultations', icon: History },
     { id: 'treatment', label: 'Post-Care Plan', icon: CheckSquare },
+    { id: 'family', label: 'Family Members', icon: Users },
     { id: 'education', label: 'Health Videos', icon: Video },
     { id: 'insurance', label: 'Insurance', icon: Shield },
     { id: 'services', label: 'Health Services', icon: MapPin },
@@ -226,6 +230,9 @@ const PatientView: React.FC<Props> = ({ user }) => {
                 </div>
             )}
 
+            {/* SWASTHYA SCORE VIEW */}
+            {activeSection === 'score' && <SwasthyaScore />}
+
             {/* HISTORY VIEW */}
             {activeSection === 'history' && (
                 <div className="space-y-4">
@@ -262,6 +269,9 @@ const PatientView: React.FC<Props> = ({ user }) => {
                     )}
                 </div>
             )}
+
+            {/* FAMILY VIEW */}
+            {activeSection === 'family' && <FamilyManager />}
 
             {/* POST-TREATMENT PLAN */}
             {activeSection === 'treatment' && (

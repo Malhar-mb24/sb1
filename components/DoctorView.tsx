@@ -1,14 +1,151 @@
 import React, { useState, useEffect } from 'react';
-import { User, Consultation, ConsultationStatus, TriageLevel, PrescriptionItem } from '../types';
+import { User, Consultation, ConsultationStatus, TriageLevel, PrescriptionItem, LANGUAGES } from '../types';
 import { api } from '../services/api';
-import { formatClinicalNotes } from '../services/geminiService';
-import { Mic, Video, FileText, CheckCircle, Activity, Pill, Clock, Paperclip, Play, Pause, X } from 'lucide-react';
+import { formatClinicalNotes, translateFormContent } from '../services/geminiService';
+import { 
+  Mic, Video, FileText, CheckCircle, Activity, Pill, Clock, 
+  Paperclip, Play, Pause, X, List, Globe, Download, Check 
+} from 'lucide-react';
 
 interface Props {
   user: User;
 }
 
+const BASE_FORM = {
+    title: "General Consultation Consent Form",
+    desc: "Please read the following information carefully before proceeding with your consultation.",
+    patientNameLabel: "Patient Full Name",
+    symptomsLabel: "Primary Symptoms",
+    consentText: "I hereby give my consent for medical examination and treatment.",
+    privacyText: "I understand that my health data will be stored securely according to privacy laws.",
+    submitBtn: "Sign & Submit"
+};
+
+// --- E-FORMS SUB-COMPONENT ---
+const EForms: React.FC = () => {
+    const [selectedLang, setSelectedLang] = useState('en');
+    const [formContent, setFormContent] = useState(BASE_FORM);
+    const [loading, setLoading] = useState(false);
+    const [formData, setFormData] = useState({ name: '', symptoms: '' });
+    const [submitted, setSubmitted] = useState(false);
+
+    useEffect(() => {
+        const updateLanguage = async () => {
+            setLoading(true);
+            if (selectedLang === 'en') {
+                setFormContent(BASE_FORM);
+            } else {
+                const translated = await translateFormContent(BASE_FORM, selectedLang);
+                setFormContent(translated);
+            }
+            setLoading(false);
+        };
+        updateLanguage();
+    }, [selectedLang]);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        setSubmitted(true);
+        setTimeout(() => setSubmitted(false), 3000);
+    };
+
+    return (
+        <div className="h-full bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-blue-100 rounded-lg">
+                        <FileText className="w-6 h-6 text-blue-600" />
+                    </div>
+                    <div>
+                        <h2 className="text-lg font-bold text-slate-800">E-Consent Forms</h2>
+                        <p className="text-xs text-slate-500">Digitally signed & secure</p>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
+                    <Globe className="w-4 h-4 text-slate-500" />
+                    <select 
+                        value={selectedLang}
+                        onChange={(e) => setSelectedLang(e.target.value)}
+                        className="bg-transparent text-sm font-medium text-slate-700 outline-none cursor-pointer"
+                    >
+                        {LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
+                    </select>
+                </div>
+            </div>
+
+            <div className="flex-1 p-8 overflow-y-auto">
+                <div className="max-w-2xl mx-auto">
+                    {loading ? (
+                        <div className="h-64 flex flex-col items-center justify-center space-y-3 opacity-50">
+                            <Globe className="w-10 h-10 animate-pulse text-blue-500" />
+                            <p className="text-sm font-medium text-slate-500">Translating form content...</p>
+                        </div>
+                    ) : (
+                        <form onSubmit={handleSubmit} className="space-y-8 animate-fade-in">
+                            <div className="text-center space-y-2">
+                                <h1 className="text-2xl font-bold text-slate-900">{formContent.title}</h1>
+                                <p className="text-slate-500">{formContent.desc}</p>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">{formContent.patientNameLabel}</label>
+                                    <input 
+                                        type="text" 
+                                        required
+                                        value={formData.name}
+                                        onChange={e => setFormData({...formData, name: e.target.value})}
+                                        className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" 
+                                        placeholder="Enter name..."
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">{formContent.symptomsLabel}</label>
+                                    <textarea 
+                                        rows={3}
+                                        required
+                                        value={formData.symptoms}
+                                        onChange={e => setFormData({...formData, symptoms: e.target.value})}
+                                        className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" 
+                                        placeholder="Enter description..."
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="bg-blue-50 p-6 rounded-xl space-y-4 border border-blue-100">
+                                <label className="flex items-start gap-3 cursor-pointer">
+                                    <input type="checkbox" required className="mt-1 w-4 h-4 text-blue-600 rounded focus:ring-blue-500" />
+                                    <span className="text-sm text-blue-900 leading-relaxed">{formContent.consentText}</span>
+                                </label>
+                                <label className="flex items-start gap-3 cursor-pointer">
+                                    <input type="checkbox" required className="mt-1 w-4 h-4 text-blue-600 rounded focus:ring-blue-500" />
+                                    <span className="text-sm text-blue-900 leading-relaxed">{formContent.privacyText}</span>
+                                </label>
+                            </div>
+
+                            <div className="flex gap-4 pt-4">
+                                <button 
+                                    type="submit" 
+                                    className="flex-1 bg-blue-600 text-white py-3 rounded-xl hover:bg-blue-700 font-bold transition-colors flex justify-center items-center gap-2 shadow-sm"
+                                >
+                                    {submitted ? <Check className="w-5 h-5" /> : null}
+                                    {submitted ? 'Submitted Successfully' : formContent.submitBtn}
+                                </button>
+                                <button type="button" className="p-3 border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600">
+                                    <Download className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </form>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const DoctorView: React.FC<Props> = ({ user }) => {
+  const [activeTab, setActiveTab] = useState<'QUEUE' | 'EFORMS'>('QUEUE');
   const [queue, setQueue] = useState<Consultation[]>([]);
   const [activeCase, setActiveCase] = useState<Consultation | null>(null);
   
@@ -91,53 +228,89 @@ const DoctorView: React.FC<Props> = ({ user }) => {
   return (
     <div className="h-[calc(100vh-64px)] flex bg-slate-50 overflow-hidden">
       
-      {/* SIDEBAR: QUEUE */}
+      {/* MAIN DASHBOARD (Sidebar + Content) */}
       {!activeCase && (
-        <div className="w-full p-6 max-w-5xl mx-auto">
-            <h1 className="text-2xl font-bold text-slate-800 mb-6">Patient Queue</h1>
-            <div className="bg-white rounded-2xl shadow border border-slate-200 overflow-hidden">
-                <table className="w-full text-left">
-                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold text-sm">
-                        <tr>
-                            <th className="p-4">Priority</th>
-                            <th className="p-4">Patient</th>
-                            <th className="p-4">Complaint</th>
-                            <th className="p-4">Status</th>
-                            <th className="p-4">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {queue.map(p => (
-                            <tr key={p.id} className="border-b hover:bg-slate-50 transition">
-                                <td className="p-4">
-                                    <span className={`px-2 py-1 rounded text-xs font-bold ${p.triage === 'RED' ? 'bg-red-100 text-red-600' : p.triage === 'YELLOW' ? 'bg-yellow-100 text-yellow-600' : 'bg-green-100 text-green-600'}`}>
-                                        {p.triage}
-                                    </span>
-                                </td>
-                                <td className="p-4 font-bold text-slate-700">{p.patientName}</td>
-                                <td className="p-4 text-slate-500 text-sm max-w-xs truncate">{p.symptoms}</td>
-                                <td className="p-4 text-xs uppercase font-bold text-slate-500">{p.status.replace('_', ' ')}</td>
-                                <td className="p-4">
-                                    <button onClick={() => startConsultation(p)} className="bg-teal-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-teal-700 shadow-sm">
-                                        Attend
-                                    </button>
-                                </td>
-                            </tr>
-                        ))}
-                        {queue.length === 0 && (
-                            <tr>
-                                <td colSpan={5} className="p-8 text-center text-slate-400">No patients waiting. Good job!</td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
+        <div className="flex w-full max-w-7xl mx-auto h-full">
+            {/* Sidebar Navigation */}
+            <div className="w-64 p-4 h-full flex flex-col gap-2 border-r border-slate-200 bg-white">
+                 <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-2">Doctor's Console</h2>
+                 <button 
+                    onClick={() => setActiveTab('QUEUE')}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-sm transition
+                    ${activeTab === 'QUEUE' ? 'bg-teal-50 text-teal-700 font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
+                 >
+                    <List size={18}/> Patient Queue 
+                    {queue.length > 0 && <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{queue.length}</span>}
+                 </button>
+                 <button 
+                    onClick={() => setActiveTab('EFORMS')}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-sm transition
+                    ${activeTab === 'EFORMS' ? 'bg-teal-50 text-teal-700 font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
+                 >
+                    <FileText size={18}/> E-Consent Forms
+                 </button>
+            </div>
+
+            {/* Dashboard Content Area */}
+            <div className="flex-1 p-6 h-full overflow-hidden bg-slate-50">
+                
+                {/* QUEUE VIEW */}
+                {activeTab === 'QUEUE' && (
+                    <div className="h-full flex flex-col">
+                        <h1 className="text-2xl font-bold text-slate-800 mb-6">Waiting Room</h1>
+                        <div className="bg-white rounded-2xl shadow border border-slate-200 overflow-hidden flex-1 overflow-y-auto">
+                            <table className="w-full text-left">
+                                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold text-sm sticky top-0">
+                                    <tr>
+                                        <th className="p-4">Priority</th>
+                                        <th className="p-4">Patient</th>
+                                        <th className="p-4">Complaint</th>
+                                        <th className="p-4">Status</th>
+                                        <th className="p-4">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {queue.map(p => (
+                                        <tr key={p.id} className="border-b hover:bg-slate-50 transition">
+                                            <td className="p-4">
+                                                <span className={`px-2 py-1 rounded text-xs font-bold ${p.triage === 'RED' ? 'bg-red-100 text-red-600' : p.triage === 'YELLOW' ? 'bg-yellow-100 text-yellow-600' : 'bg-green-100 text-green-600'}`}>
+                                                    {p.triage}
+                                                </span>
+                                            </td>
+                                            <td className="p-4 font-bold text-slate-700">{p.patientName}</td>
+                                            <td className="p-4 text-slate-500 text-sm max-w-xs truncate">{p.symptoms}</td>
+                                            <td className="p-4 text-xs uppercase font-bold text-slate-500">{p.status.replace('_', ' ')}</td>
+                                            <td className="p-4">
+                                                <button onClick={() => startConsultation(p)} className="bg-teal-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-teal-700 shadow-sm">
+                                                    Attend
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {queue.length === 0 && (
+                                        <tr>
+                                            <td colSpan={5} className="p-12 text-center text-slate-400">
+                                                <CheckCircle className="mx-auto mb-2 opacity-50" size={32}/>
+                                                No patients waiting. Good job!
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {/* E-FORMS VIEW */}
+                {activeTab === 'EFORMS' && <EForms />}
+
             </div>
         </div>
       )}
 
-      {/* CONSULTATION ROOM (SPLIT SCREEN) */}
+      {/* ACTIVE CONSULTATION ROOM (Overlay / Full View) */}
       {activeCase && (
-        <div className="flex-1 flex flex-col h-full">
+        <div className="flex-1 flex flex-col h-full w-full">
             {/* Top Bar */}
             <div className="bg-white border-b border-slate-200 p-3 flex justify-between items-center shadow-sm z-10">
                 <div>
@@ -147,7 +320,7 @@ const DoctorView: React.FC<Props> = ({ user }) => {
                     <div className="bg-red-100 text-red-600 px-3 py-1 rounded text-xs font-bold flex items-center gap-1">
                         <Clock size={12} /> Time elapsed: 04:12
                     </div>
-                    <button onClick={() => setActiveCase(null)} className="text-slate-500 hover:text-slate-800"><X size={20}/></button>
+                    <button onClick={() => setActiveCase(null)} className="text-slate-500 hover:text-slate-800 p-1 rounded hover:bg-slate-100"><X size={20}/></button>
                 </div>
             </div>
 
